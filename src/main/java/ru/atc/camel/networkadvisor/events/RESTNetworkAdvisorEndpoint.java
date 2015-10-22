@@ -7,7 +7,7 @@ import org.apache.camel.impl.DefaultPollingEndpoint;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 
-@UriEndpoint(scheme="feedly", title="Feedly", syntax="feedly://operationPath", consumerOnly=true, consumerClass=RESTNetworkAdvisorConsumer.class, label="feeds")
+@UriEndpoint(scheme="restna", title="RestNA", syntax="restna://operationPath", consumerOnly=true, consumerClass=RESTNetworkAdvisorConsumer.class, label="restna")
 public class RESTNetworkAdvisorEndpoint extends DefaultPollingEndpoint {
 
 	public RESTNetworkAdvisorEndpoint(String uri, String operationPath, RESTNetworkAdvisorComponent component) {
@@ -21,7 +21,7 @@ public class RESTNetworkAdvisorEndpoint extends DefaultPollingEndpoint {
 	private RESTNetworkAdvisorConfiguration configuration;
 
 	public Producer createProducer() throws Exception {
-		throw new UnsupportedOperationException("FeedlyProducer is not implemented");
+		throw new UnsupportedOperationException("RESTNetworkAdvisorProducer is not implemented");
 	}
 
 	@Override

@@ -23,10 +23,10 @@ public class Main {
 			public void configure() throws Exception {
 				
 				PropertiesComponent properties = new PropertiesComponent();
-				properties.setLocation("classpath:feedly.properties");
+				properties.setLocation("classpath:restna.properties");
 				getContext().addComponent("properties", properties);
 				
-		    	from("feedly://events?"
+		    	from("restna://events?"
 		    			+ "delay={{delay}}&"
 		    			+ "eventsuri={{eventsuri}}&"
 		    			+ "startindex={{startindex}}&"

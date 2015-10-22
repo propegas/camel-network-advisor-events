@@ -10,7 +10,7 @@
 	<camel:camelContext>
 		<camel:propertyPlaceholder id="properties" location="feedly.properties"/> 
         <camel:route>
-			<camel:from uri="feedly://events?
+			<camel:from uri="restna://events?
 				delay={{delay}}&amp;
 				eventsuri={{eventsuri}}&amp;
 				startindex={{startindex}}&amp;
