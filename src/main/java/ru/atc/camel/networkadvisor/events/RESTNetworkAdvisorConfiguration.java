@@ -8,7 +8,13 @@ public class RESTNetworkAdvisorConfiguration {
     
 	private String eventsuri;
 	
-	private int lastid;
+	private String wsusername;
+	
+	private String restapiurl;
+	
+	private String wspassword;
+	
+	private int lastid = 0;
 	
     @UriParam
     private String query;
@@ -79,5 +85,29 @@ public class RESTNetworkAdvisorConfiguration {
 
 	public void setLastid(int lastid) {
 		this.lastid = lastid;
+	}
+
+	public String getRestapiurl() {
+		return restapiurl;
+	}
+
+	public void setRestapiurl(String restapiurl) {
+		this.restapiurl = restapiurl;
+	}
+
+	public String getWsusername() {
+		return wsusername;
+	}
+
+	public void setWsusername(String wsusername) {
+		this.wsusername = wsusername;
+	}
+
+	public String getWspassword() {
+		return wspassword;
+	}
+
+	public void setWspassword(String wspassword) {
+		this.wspassword = wspassword;
 	}
 }

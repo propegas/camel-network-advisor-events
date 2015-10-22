@@ -28,6 +28,9 @@ public class Main {
 				
 		    	from("restna://events?"
 		    			+ "delay={{delay}}&"
+		    			+ "restapiurl={{restapiurl}}&"
+		    			+ "wsusername={{wsusername}}&"
+		    			+ "wspassword={{wspassword}}&"
 		    			+ "eventsuri={{eventsuri}}&"
 		    			+ "startindex={{startindex}}&"
 		    			+ "count={{count}}&"

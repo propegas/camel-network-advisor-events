@@ -9,6 +9,8 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.net.ssl.SSLContext;
 
@@ -21,13 +23,15 @@ import org.apache.http.client.ClientProtocolException;
 //import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpPut;
+//import org.apache.http.client.methods.HttpPut;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.ssl.SSLContextBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -36,10 +40,12 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import ru.atc.camel.networkadvisor.events.api.Feed2;
+//import ru.atc.camel.networkadvisor.events.api.Feed2;
 import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorEvents;
 
 public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
+	
+	private static Logger logger = LoggerFactory.getLogger(Main.class);
 	
 	private RESTNetworkAdvisorEndpoint endpoint;
 
@@ -48,43 +54,16 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         this.endpoint = endpoint;
         this.setDelay(endpoint.getConfiguration().getDelay());
 	}
-
+	
 	@Override
 	protected int poll() throws Exception {
 		
 		String operationPath = endpoint.getOperationPath();
 		
-		if (operationPath.equals("events")) return processSearchServer();
+		if (operationPath.equals("events")) return processSearchEvents();
 		
 		// only one operation implemented for now !
 		throw new IllegalArgumentException("Incorrect operation: " + operationPath);
-	}
-	
-	private JsonObject performGetRequest(String uri) throws ClientProtocolException, IOException {
-		
-		System.out.println("*****************Lastid: " + endpoint.getConfiguration().getLastid());
-		endpoint.getConfiguration().setLastid(70955);
-		
-		CloseableHttpClient httpclient = HTTPinit();
-		
-		//httpclient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
-	    
-		String WStoken = getWStoken(httpclient);
-				
-		//uri = "resourcegroups/All/events?startindex=0&count=10&specialEvent=true&origin=trap";
-		HttpGet request2 = new HttpGet("https://localhost:8443/rest/" + uri);
-		request2.addHeader("Accept", "application/vnd.brocade.networkadvisor+json;version=v1");
-		request2.addHeader("WStoken", WStoken);
-		HttpResponse response2 = httpclient.execute(request2);
-		
-		JsonParser parser = new JsonParser();
-		InputStreamReader sr = new InputStreamReader(response2.getEntity().getContent(), "UTF-8");
-		BufferedReader br = new BufferedReader(sr);
-		JsonObject json = (JsonObject) parser.parse(br);
-		br.close();
-		sr.close();
-		
-		return json;
 	}
 	
 	private CloseableHttpClient HTTPinit(){
@@ -121,6 +100,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 			e.printStackTrace();
 		}
 	    
+		@SuppressWarnings("deprecation")
 		SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(sslContext,SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
 	    CloseableHttpClient httpclient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
 	    return httpclient;
@@ -128,10 +108,18 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 	
 	private String getWStoken( CloseableHttpClient httpclient ){
 		
-	    HttpPost request = new HttpPost("https://localhost:8443/rest/" + "login");
+		String restapiurl = endpoint.getConfiguration().getRestapiurl();
+		String WSusername = endpoint.getConfiguration().getWsusername();
+		String WSpassword = endpoint.getConfiguration().getWspassword();
+		
+		logger.info("***************** restapiurl: " + restapiurl);
+		logger.info("***************** WSusername: " + WSusername);
+		logger.info("***************** WSpassword: " + restapiurl);
+		
+		HttpPost request = new HttpPost(restapiurl + "login");
 		request.addHeader("Accept", "application/vnd.brocade.networkadvisor+json;version=v1");
-		request.addHeader("WSusername", "zsm");
-		request.addHeader("WSpassword", "EG445y69of");
+		request.addHeader("WSusername", WSusername);
+		request.addHeader("WSpassword", WSpassword);
 		HttpResponse response = null;
 		try {
 			response = httpclient.execute(request);
@@ -148,18 +136,49 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		Header head = response.getFirstHeader("WStoken");
 		String WStoken = head.getValue();
 		System.out.println("***************** WStoken: " + WStoken);
-
+	
 		if (response.getStatusLine().getStatusCode() != 200) {
 			//throw new RuntimeException("Feedly API error with return code: " + response.getStatusLine().getStatusCode());
-			System.out.println("Feedly API error with return code: " + response.getStatusLine().getStatusCode());
+			System.out.println("Network Advisor RST API error with return code: " + response.getStatusLine().getStatusCode());
 			return null;
 		}
 		
 		return WStoken;
 		
 	}
-	
-	private int processSearchServer() throws Exception {
+
+	private JsonObject performGetRequest(String uri) throws ClientProtocolException, IOException {
+		
+		String restapiurl = endpoint.getConfiguration().getRestapiurl();
+		
+		System.out.println("*****************Lastid: " + endpoint.getConfiguration().getLastid());
+		//endpoint.getConfiguration().setLastid(70955);
+		
+		CloseableHttpClient httpclient = HTTPinit();
+		
+		//httpclient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
+	    
+		String WStoken = getWStoken(httpclient);
+		if (WStoken == null)
+			throw new RuntimeException("Failed while WSToken retrieving.");
+				
+		//uri = "resourcegroups/All/events?startindex=0&count=10&specialEvent=true&origin=trap";
+		HttpGet request2 = new HttpGet(restapiurl + uri);
+		request2.addHeader("Accept", "application/vnd.brocade.networkadvisor+json;version=v1");
+		request2.addHeader("WStoken", WStoken);
+		HttpResponse response2 = httpclient.execute(request2);
+		
+		JsonParser parser = new JsonParser();
+		InputStreamReader sr = new InputStreamReader(response2.getEntity().getContent(), "UTF-8");
+		BufferedReader br = new BufferedReader(sr);
+		JsonObject json = (JsonObject) parser.parse(br);
+		br.close();
+		sr.close();
+		
+		return json;
+	}
+
+	private int processSearchEvents() throws Exception {
 		
 		String eventsuri = endpoint.getConfiguration().getEventsuri();
 		
@@ -177,32 +196,69 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		
 		System.out.println("*****************  JSON: " + json);
 		
-		JsonArray feeds = (JsonArray) json.get("events");
+		JsonArray events = (JsonArray) json.get("events");
 		//JsonElement serverName = json.get("serverName");
-		List<RESTNetworkAdvisorEvents> feedList = new ArrayList<RESTNetworkAdvisorEvents>();
+		List<RESTNetworkAdvisorEvents> eventList = new ArrayList<RESTNetworkAdvisorEvents>();
 		Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 		
-		for (JsonElement f : feeds) {
+		int EventId = 0;
+		int lastEventId = 0;
+		int i = 0;
+		
+		System.out.println("*****************lastEventId: " + lastEventId);
+		int storedLastId = endpoint.getConfiguration().getLastid();
+		System.out.println("*****************storedLastId: " + storedLastId);
+		
+		for (JsonElement f : events) {
+			i++;
 			//logger.debug(gson.toJson(i));
-			RESTNetworkAdvisorEvents feed = gson.fromJson(f, RESTNetworkAdvisorEvents.class);
-			feedList.add(feed);		
+			
+			
+			RESTNetworkAdvisorEvents event = gson.fromJson(f, RESTNetworkAdvisorEvents.class);
+			EventId = getEventId(event.getKey());
+			if ( i == 1 )
+				lastEventId = EventId;
+			
+			System.out.println("*****************EventId: " + EventId);
+			if (EventId != -1){
+				if (EventId > storedLastId){
+					eventList.add(event);
+				}
+				else {
+					break;
+				}
+			}
+			
+					
 		}	
 			
-		System.out.println("*****************Lastid: " + endpoint.getConfiguration().getLastid());
-		endpoint.getConfiguration().setLastid(70955);
+		endpoint.getConfiguration().setLastid(lastEventId) ;
 		
-		//System.out.println("*****************" + serverName);
-
-		
-		//logger.info("Starting Custom Apache Camel component example");
+				
+		logger.info("Create Exchange container");
         Exchange exchange = getEndpoint().createExchange();
-        exchange.getIn().setBody(feedList, ArrayList.class);
+        exchange.getIn().setBody(eventList, ArrayList.class);
         //exchange.getIn().setBody(serverName, Object.class);
         getProcessor().process(exchange); 
         
         return 1;
 	}
+
+	private int getEventId(String key) {
+		// TODO Auto-generated method stub
+		int id = -1;
+		Pattern p = Pattern.compile("(edbid-)(.*)");
+		Matcher matcher = p.matcher(key);
+		//String output = "";
+		if (matcher.matches())
+			id = Integer.parseInt(matcher.group(2));
+		//System.out.println(matcher.group(2));
+		id = Integer.parseInt(matcher.group(2).toString());
+		//System.out.println(id);
+		return id;
+	}
 	
+	/*
 	private int processSearchFeeds() throws Exception {
 		
 		String query = endpoint.getConfiguration().getQuery();
@@ -225,5 +281,6 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         
         return 1;
 	}
+	*/
 
 }

@@ -11,6 +11,9 @@
 		<camel:propertyPlaceholder id="properties" location="feedly.properties"/> 
         <camel:route>
 			<camel:from uri="restna://events?
+				restapiurl={{restapiurl}}&amp;
+				wsusername={{wsusername}}&amp;
+				wspassword={{wspassword}}&amp;
 				delay={{delay}}&amp;
 				eventsuri={{eventsuri}}&amp;
 				startindex={{startindex}}&amp;
