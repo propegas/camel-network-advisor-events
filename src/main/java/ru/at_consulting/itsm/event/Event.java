@@ -84,6 +84,7 @@ public class Event implements  Serializable {
                                 " on host: "+ this.getHost() +
                          " with severity: "+ this.getSeverity() +
                          " object: "+ this.getObject() +
+                         " parameter: "+ this.getParametr() +
                          " and status: "+ this.getStatus());
         }
      

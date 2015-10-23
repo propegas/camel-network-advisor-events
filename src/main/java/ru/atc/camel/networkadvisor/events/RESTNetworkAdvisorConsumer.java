@@ -33,6 +33,8 @@ import org.apache.http.ssl.SSLContextBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+//import com.apc.stdws.xsd.isxcentral._2009._10.ISXCAlarm;
+//import com.apc.stdws.xsd.isxcentral._2009._10.ISXCDevice;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -40,6 +42,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import ru.at_consulting.itsm.event.Event;
 //import ru.atc.camel.networkadvisor.events.api.Feed2;
 import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorEvents;
 
@@ -180,6 +183,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
 	private int processSearchEvents() throws Exception {
 		
+		//Long timestamp;
+		
 		String eventsuri = endpoint.getConfiguration().getEventsuri();
 		
 		System.out.println("***************** eventsuri: " + eventsuri);
@@ -198,7 +203,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		
 		JsonArray events = (JsonArray) json.get("events");
 		//JsonElement serverName = json.get("serverName");
-		List<RESTNetworkAdvisorEvents> eventList = new ArrayList<RESTNetworkAdvisorEvents>();
+		//List<RESTNetworkAdvisorEvents> eventList = new ArrayList<RESTNetworkAdvisorEvents>();
+		List<Event> eventList = new ArrayList<Event>();
 		Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 		
 		int EventId = 0;
@@ -215,6 +221,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 			
 			
 			RESTNetworkAdvisorEvents event = gson.fromJson(f, RESTNetworkAdvisorEvents.class);
+			Event genevent = new Event();
+			
 			EventId = getEventId(event.getKey());
 			if ( i == 1 )
 				lastEventId = EventId;
@@ -222,7 +230,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 			System.out.println("*****************EventId: " + EventId);
 			if (EventId != -1){
 				if (EventId > storedLastId){
-					eventList.add(event);
+					
+					genevent = genEventObj( event );
+					eventList.add(genevent);
 				}
 				else {
 					break;
@@ -243,9 +253,33 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         
         return 1;
 	}
+	
+	public static Event genEventObj( RESTNetworkAdvisorEvents event ) {
+		Event genevent;
+		//Long timestamp;
+		
+		genevent = new Event();
+		genevent.setHost(event.getSourceName());
+		//genevent.setParametr(event.getEventCategory());
+		genevent.setObject(event.getNodeWwn());
+		genevent.setCategory("HARDWARE");
+		genevent.setExternalid(event.getKey());
+		genevent.setMessage(event.getDescription());
+		genevent.setSeverity(event.getSeverity());
+		genevent.setStatus("OPEN");
+		genevent.setTimestamp(event.getFirstOccurrenceHostTime()/1000);
+		genevent.setEventsource("BSNA");
+		genevent.setService("BSNA");
+		genevent.setCi(event.getNodeWwn());
+		//System.out.println(event.toString());
+		
+		logger.info(genevent.toString());
+		
+		return genevent;
+				
+	}
 
 	private int getEventId(String key) {
-		// TODO Auto-generated method stub
 		int id = -1;
 		Pattern p = Pattern.compile("(edbid-)(.*)");
 		Matcher matcher = p.matcher(key);
