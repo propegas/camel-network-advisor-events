@@ -55,6 +55,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 	public RESTNetworkAdvisorConsumer(RESTNetworkAdvisorEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
         this.endpoint = endpoint;
+        //this.afterPoll();
         this.setDelay(endpoint.getConfiguration().getDelay());
 	}
 	
@@ -117,7 +118,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		
 		logger.info("***************** restapiurl: " + restapiurl);
 		logger.info("***************** WSusername: " + WSusername);
-		logger.info("***************** WSpassword: " + restapiurl);
+		logger.info("***************** WSpassword: " + WSpassword);
 		
 		HttpPost request = new HttpPost(restapiurl + "login");
 		request.addHeader("Accept", "application/vnd.brocade.networkadvisor+json;version=v1");
@@ -248,6 +249,10 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		logger.info("Create Exchange container");
         Exchange exchange = getEndpoint().createExchange();
         exchange.getIn().setBody(eventList, ArrayList.class);
+        System.out.println("There is an exchange going on.");
+        //System.out.println(exchange.getIn().getHeader("CamelFileName"));
+        System.out.println(exchange.getIn().getBody());
+        System.out.println(exchange.getIn().getBody().getClass());
         //exchange.getIn().setBody(serverName, Object.class);
         getProcessor().process(exchange); 
         
