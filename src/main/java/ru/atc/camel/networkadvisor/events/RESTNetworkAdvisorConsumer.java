@@ -8,6 +8,7 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -242,6 +243,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 			
 					
 		}	
+		
+		Collections.reverse(eventList);
 			
 		endpoint.getConfiguration().setLastid(lastEventId) ;
 		
@@ -249,6 +252,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		logger.info("Create Exchange container");
         Exchange exchange = getEndpoint().createExchange();
         exchange.getIn().setBody(eventList, ArrayList.class);
+        //exchange.getIn().setHe
         System.out.println("There is an exchange going on.");
         //System.out.println(exchange.getIn().getHeader("CamelFileName"));
         System.out.println(exchange.getIn().getBody());
@@ -278,7 +282,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		genevent.setCi(event.getNodeWwn());
 		//System.out.println(event.toString());
 		
-		logger.info(genevent.toString());
+		//logger.info(genevent.toString());
 		
 		return genevent;
 				
