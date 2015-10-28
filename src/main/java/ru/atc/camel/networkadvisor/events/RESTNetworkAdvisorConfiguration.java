@@ -26,6 +26,9 @@ public class RESTNetworkAdvisorConfiguration {
     private int startindex = 0;
     
     @UriParam(defaultValue = "50")
+    private int initcount = 50;
+    
+    @UriParam(defaultValue = "50")
     private int count = 50;
     
     @UriParam(defaultValue = "true")
@@ -109,5 +112,13 @@ public class RESTNetworkAdvisorConfiguration {
 
 	public void setWspassword(String wspassword) {
 		this.wspassword = wspassword;
+	}
+
+	public int getInitcount() {
+		return initcount;
+	}
+
+	public void setInitcount(int initcount) {
+		this.initcount = initcount;
 	}
 }

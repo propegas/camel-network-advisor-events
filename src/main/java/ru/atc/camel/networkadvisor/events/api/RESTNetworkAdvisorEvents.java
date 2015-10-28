@@ -11,6 +11,7 @@ public class RESTNetworkAdvisorEvents {
     private String origin;
     private String eventCategory;
     private String nodeWwn;
+    private String module;
 	
 	
 	@Override
@@ -106,5 +107,15 @@ public class RESTNetworkAdvisorEvents {
 
 	public void setEventCategory(String eventCategory) {
 		this.eventCategory = eventCategory;
+	}
+
+
+	public String getModule() {
+		return module;
+	}
+
+
+	public void setModule(String module) {
+		this.module = module;
 	}
 }

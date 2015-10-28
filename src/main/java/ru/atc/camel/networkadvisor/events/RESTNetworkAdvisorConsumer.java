@@ -43,15 +43,24 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import ru.at_consulting.itsm.device.Device;
 import ru.at_consulting.itsm.event.Event;
+import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorDevice;
 //import ru.atc.camel.networkadvisor.events.api.Feed2;
 import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorEvents;
+
 
 public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 	
 	private static Logger logger = LoggerFactory.getLogger(Main.class);
 	
 	private RESTNetworkAdvisorEndpoint endpoint;
+	
+	private static String SavedWStoken;
+	
+	public enum PersistentEventSeverity {
+	    OK, INFO, WARNING, MINOR, MAJOR, CRITICAL;
+	}
 
 	public RESTNetworkAdvisorConsumer(RESTNetworkAdvisorEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
@@ -140,7 +149,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		
 		Header head = response.getFirstHeader("WStoken");
 		String WStoken = head.getValue();
-		System.out.println("***************** WStoken: " + WStoken);
+		//System.out.println("***************** WStoken: " + WStoken);
 	
 		if (response.getStatusLine().getStatusCode() != 200) {
 			//throw new RuntimeException("Feedly API error with return code: " + response.getStatusLine().getStatusCode());
@@ -148,25 +157,34 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 			return null;
 		}
 		
+		setSavedWStoken(WStoken);
+		
 		return WStoken;
 		
 	}
 
-	private JsonObject performGetRequest(String uri) throws ClientProtocolException, IOException {
+	private JsonObject performGetRequest(String uri, String WStoken) throws ClientProtocolException, IOException {
 		
 		String restapiurl = endpoint.getConfiguration().getRestapiurl();
 		
-		System.out.println("*****************Lastid: " + endpoint.getConfiguration().getLastid());
+		//System.out.println("*****************Lastid: " + endpoint.getConfiguration().getLastid());
 		//endpoint.getConfiguration().setLastid(70955);
 		
-		CloseableHttpClient httpclient = HTTPinit();
+		CloseableHttpClient	httpclient = HTTPinit();
 		
 		//httpclient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
 	    
-		String WStoken = getWStoken(httpclient);
-		if (WStoken == null)
-			throw new RuntimeException("Failed while WSToken retrieving.");
-				
+		//System.out.println("*****************WSToken: " + WStoken);
+		
+		if (WStoken == null){
+			WStoken = getWStoken(httpclient);
+			if (WStoken == null)
+				throw new RuntimeException("Failed while WSToken retrieving.");
+		}
+		//System.out.println("*****************WSToken: " + WStoken);
+		
+		//System.out.println("*****************URL: " + restapiurl + uri);
+		
 		//uri = "resourcegroups/All/events?startindex=0&count=10&specialEvent=true&origin=trap";
 		HttpGet request2 = new HttpGet(restapiurl + uri);
 		request2.addHeader("Accept", "application/vnd.brocade.networkadvisor+json;version=v1");
@@ -182,26 +200,64 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		
 		return json;
 	}
-
+	
+	private  RESTNetworkAdvisorDevice getDeviceByWwn( String wwn, String WStoken ) {
+		String uri = String.format("resourcegroups/All/fcswitches/%s", wwn);
+		
+		//System.out.println("***************** URL2: " + uri);
+		
+		JsonObject json = null ;
+		try {
+			json = performGetRequest(uri, WStoken);
+		} catch (ClientProtocolException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		JsonArray devices = (JsonArray) json.get("fcSwitches");
+		//JsonElement serverName = json.get("serverName");
+		//List<RESTNetworkAdvisorEvents> eventList = new ArrayList<RESTNetworkAdvisorEvents>();
+		//Device device = new Device();
+		Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+		
+		JsonElement f = devices.get(0);
+		
+		logger.debug(f.toString());
+			
+		RESTNetworkAdvisorDevice device_na = gson.fromJson(f, RESTNetworkAdvisorDevice.class);
+		//gendevice = genDeviceObj( device_na );
+		
+		return device_na;
+		
+	}
+	
 	private int processSearchEvents() throws Exception {
 		
 		//Long timestamp;
 		
 		String eventsuri = endpoint.getConfiguration().getEventsuri();
 		
-		System.out.println("***************** eventsuri: " + eventsuri);
+		//System.out.println("***************** eventsuri: " + eventsuri);
 		
 		int startindex = endpoint.getConfiguration().getStartindex();
-		int count = endpoint.getConfiguration().getCount();
+		int initcount = endpoint.getConfiguration().getInitcount();
 		String specialEvent = endpoint.getConfiguration().getSpecialEvent();
 		String uri = String.format("%sevents?startindex=%d&count=%d&specialEvent=%s", 
-									eventsuri,startindex,count,specialEvent);
+									eventsuri,startindex,initcount,specialEvent);
 		
-		System.out.println("***************** URL: " + uri);
+		//System.out.println("***************** URL: " + uri);
 		
-		JsonObject json = performGetRequest(uri);
+		//CloseableHttpClient httpclient = HTTPinit();
 		
-		System.out.println("*****************  JSON: " + json);
+		logger.info("Try to get " + initcount + " Events." );
+		
+		logger.info("Get events URL: " + uri);
+		JsonObject json = performGetRequest(uri, null);
+		
+		//System.out.println("*****************  JSON: " + json);
 		
 		JsonArray events = (JsonArray) json.get("events");
 		//JsonElement serverName = json.get("serverName");
@@ -212,14 +268,18 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		int EventId = 0;
 		int lastEventId = 0;
 		int i = 0;
+		int j = 0;
+		boolean findlast = false;
 		
-		System.out.println("*****************lastEventId: " + lastEventId);
+		//System.out.println("*****************lastEventId: " + lastEventId);
 		int storedLastId = endpoint.getConfiguration().getLastid();
-		System.out.println("*****************storedLastId: " + storedLastId);
+		//System.out.println("*****************storedLastId: " + storedLastId);
+		
+		logger.info("Received " + events.size() + " Total Events." );
 		
 		for (JsonElement f : events) {
 			i++;
-			//logger.debug(gson.toJson(i));
+			logger.debug(f.toString());
 			
 			
 			RESTNetworkAdvisorEvents event = gson.fromJson(f, RESTNetworkAdvisorEvents.class);
@@ -230,13 +290,28 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 				lastEventId = EventId;
 			
 			System.out.println("*****************EventId: " + EventId);
+			
 			if (EventId != -1){
 				if (EventId > storedLastId){
-					
+					j++;
 					genevent = genEventObj( event );
 					eventList.add(genevent);
+					
+					logger.info("Create Exchange container");
+			        Exchange exchange = getEndpoint().createExchange();
+			        exchange.getIn().setBody(genevent, Event.class);
+			        exchange.getIn().setHeader("EventId", event.getKey());
+			        //exchange.getIn().setHe
+			        //System.out.println("There is an exchange going on.");
+			        //System.out.println(exchange.getIn().getHeader("CamelFileName"));
+			        //System.out.println(exchange.getIn().getBody());
+			        //System.out.println(exchange.getIn().getBody().getClass());
+			        //exchange.getIn().setBody(serverName, Object.class);
+			        getProcessor().process(exchange); 
+					
 				}
 				else {
+					findlast = true;
 					break;
 				}
 			}
@@ -244,11 +319,23 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 					
 		}	
 		
-		Collections.reverse(eventList);
-			
-		endpoint.getConfiguration().setLastid(lastEventId) ;
+		logger.info("Received " + j + " new Events." );
 		
+		//Collections.reverse(eventList);
+		endpoint.getConfiguration().setLastid(lastEventId) ;
+		int count = endpoint.getConfiguration().getCount();
+			
+		//endpoint.getConfiguration().setLastid(lastEventId) ;
+		if (findlast){
+		
+			endpoint.getConfiguration().setInitcount(count);
+		}
+		else {
+			
+			endpoint.getConfiguration().setInitcount(count * 2);
+		}
 				
+		/*
 		logger.info("Create Exchange container");
         Exchange exchange = getEndpoint().createExchange();
         exchange.getIn().setBody(eventList, ArrayList.class);
@@ -259,23 +346,49 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         System.out.println(exchange.getIn().getBody().getClass());
         //exchange.getIn().setBody(serverName, Object.class);
         getProcessor().process(exchange); 
+        */
         
         return 1;
 	}
 	
-	public static Event genEventObj( RESTNetworkAdvisorEvents event ) {
+	private Event genEventObj( RESTNetworkAdvisorEvents event ) {
 		Event genevent;
+		genevent = new Event();
+		String wwn = null;
+		RESTNetworkAdvisorDevice device_na = null;
 		//Long timestamp;
 		
-		genevent = new Event();
-		genevent.setHost(event.getSourceName());
+		wwn = event.getNodeWwn().toString();
+		//logger.info("Create Exchange container");
+		//System.out.println("***************** wwn: " + wwn);
+		
+		String hostName = "";
+		hostName = event.getSourceName();
+		if ( wwn.length() != 0 ){
+			
+			//System.out.println("***************** wwn3: ***" + wwn.length() + "***");
+			device_na = getDeviceByWwn(wwn, RESTNetworkAdvisorConsumer.getSavedWStoken());
+			logger.info("***************** device_na.getName(): " + device_na.getName());
+			logger.info("***************** event.getSourceName(): " + event.getSourceName());
+			//System.out.println("***************** device_na.getName(): " + device_na.getName());
+			//System.out.println("***************** event.getSourceName(): " + event.getSourceName());
+			if (device_na.getName().length() != 0)
+				hostName = device_na.getName();
+			else
+				hostName = event.getSourceName();
+		}
+		genevent.setHost(hostName);
 		//genevent.setParametr(event.getEventCategory());
 		genevent.setObject(event.getNodeWwn());
 		genevent.setCategory("HARDWARE");
 		genevent.setExternalid(event.getKey());
 		genevent.setMessage(event.getDescription());
-		genevent.setSeverity(event.getSeverity());
+		genevent.setSeverity(setRightSeverity(event.getSeverity()));
+		//PersistentEventSeverity.CRITICAL.toString();
 		genevent.setStatus("OPEN");
+		genevent.setOrigin(event.getOrigin());
+		genevent.setModule(event.getModule());
+		genevent.setEventCategory(event.getEventCategory());
 		genevent.setTimestamp(event.getFirstOccurrenceHostTime()/1000);
 		genevent.setEventsource("BSNA");
 		genevent.setService("BSNA");
@@ -285,6 +398,28 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		//logger.info(genevent.toString());
 		
 		return genevent;
+				
+	}
+	
+	private Device genDeviceObj( RESTNetworkAdvisorDevice device ) {
+		Device gendevice = null;
+		//Long timestamp;
+		
+		//String wwn = event.getNodeWwn();
+		
+		//getDeviceByWwn(wwn, getSavedWStoken());
+		
+		//gendevice = new Device();
+		//gendevice.setHost(event.getSourceName());
+		//genevent.setParametr(event.getEventCategory());
+		//gendevice.setObject(event.getNodeWwn());
+		//gendevice.setCategory("HARDWARE");
+
+		//System.out.println(event.toString());
+		
+		//logger.info(genevent.toString());
+		
+		return gendevice;
 				
 	}
 
@@ -299,6 +434,48 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		id = Integer.parseInt(matcher.group(2).toString());
 		//System.out.println(id);
 		return id;
+	}
+
+	public static String getSavedWStoken() {
+		return SavedWStoken;
+	}
+
+	public void setSavedWStoken(String savedWStoken) {
+		SavedWStoken = savedWStoken;
+	}
+	
+	public String setRightSeverity(String severity)
+	{
+		String newseverity = "";
+		/*
+		 * 
+		<xs:simpleType name="Severity">
+		<xs:restriction base="xs:string">
+		<xs:enumeration value="EMERGENCY"/>
+		<xs:enumeration value="ALERT"/>
+		<xs:enumeration value="CRITICAL"/>
+		<xs:enumeration value="ERROR"/>
+		<xs:enumeration value="WARNING"/>
+		<xs:enumeration value="NOTICE"/>
+		<xs:enumeration value="INFO"/>
+		<xs:enumeration value="DEBUG"/>
+		<xs:enumeration value="UNKNOWN"/>
+		</xs:restriction>
+		</xs:simpleType>
+		 */
+		switch (severity) {
+        	case "EMERGENCY":  newseverity = PersistentEventSeverity.CRITICAL.toString();
+        	case "ALERT":  newseverity = PersistentEventSeverity.CRITICAL.toString();
+        	case "CRITICAL":  newseverity = PersistentEventSeverity.CRITICAL.toString();
+        	case "ERROR":  newseverity = PersistentEventSeverity.MAJOR.toString();
+        	case "WARNING":  newseverity = PersistentEventSeverity.WARNING.toString();
+        	case "NOTICE":  newseverity = PersistentEventSeverity.INFO.toString();
+        	case "INFO":  newseverity = PersistentEventSeverity.INFO.toString();
+        	case "DEBUG":  newseverity = PersistentEventSeverity.INFO.toString();
+        	case "UNKNOWN":  newseverity = PersistentEventSeverity.INFO.toString();
+        	
+		}
+		return newseverity;
 	}
 	
 	/*

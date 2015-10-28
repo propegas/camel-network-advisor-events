@@ -64,6 +64,12 @@ public class Event implements  Serializable {
     // @Column
      public String cialias;
      
+     private String origin;
+     
+     private String eventCategory;
+     
+     private String module;
+     
      public String eventurl;
      private String eventsource;
      
@@ -210,6 +216,30 @@ public class Event implements  Serializable {
      public void setRelatedEvent(int related) {
            this.relatedEvents.add(related);
      }
+
+	public String getOrigin() {
+		return origin;
+	}
+
+	public void setOrigin(String origin) {
+		this.origin = origin;
+	}
+
+	public String getEventCategory() {
+		return eventCategory;
+	}
+
+	public void setEventCategory(String eventCategory) {
+		this.eventCategory = eventCategory;
+	}
+
+	public String getModule() {
+		return module;
+	}
+
+	public void setModule(String module) {
+		this.module = module;
+	}
      
      
 
