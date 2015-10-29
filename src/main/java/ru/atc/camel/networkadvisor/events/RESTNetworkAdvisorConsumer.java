@@ -34,6 +34,7 @@ import org.apache.http.ssl.SSLContextBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+//import com.apc.stdws.xsd.isxcentral._2009._10.ISXCAlarmSeverity;
 //import com.apc.stdws.xsd.isxcentral._2009._10.ISXCAlarm;
 //import com.apc.stdws.xsd.isxcentral._2009._10.ISXCDevice;
 import com.google.gson.Gson;
@@ -60,6 +61,14 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 	
 	public enum PersistentEventSeverity {
 	    OK, INFO, WARNING, MINOR, MAJOR, CRITICAL;
+		
+	    public String value() {
+	        return name();
+	    }
+
+	    public static PersistentEventSeverity fromValue(String v) {
+	        return valueOf(v);
+	    }
 	}
 
 	public RESTNetworkAdvisorConsumer(RESTNetworkAdvisorEndpoint endpoint, Processor processor) {
@@ -463,18 +472,23 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		</xs:restriction>
 		</xs:simpleType>
 		 */
+		
+		
+		
 		switch (severity) {
-        	case "EMERGENCY":  newseverity = PersistentEventSeverity.CRITICAL.toString();
-        	case "ALERT":  newseverity = PersistentEventSeverity.CRITICAL.toString();
-        	case "CRITICAL":  newseverity = PersistentEventSeverity.CRITICAL.toString();
-        	case "ERROR":  newseverity = PersistentEventSeverity.MAJOR.toString();
-        	case "WARNING":  newseverity = PersistentEventSeverity.WARNING.toString();
-        	case "NOTICE":  newseverity = PersistentEventSeverity.INFO.toString();
-        	case "INFO":  newseverity = PersistentEventSeverity.INFO.toString();
-        	case "DEBUG":  newseverity = PersistentEventSeverity.INFO.toString();
-        	case "UNKNOWN":  newseverity = PersistentEventSeverity.INFO.toString();
+        	case "EMERGENCY":  newseverity = PersistentEventSeverity.CRITICAL.name();break;
+        	case "ALERT":  newseverity = PersistentEventSeverity.CRITICAL.name();break;
+        	case "CRITICAL":  newseverity = PersistentEventSeverity.CRITICAL.name();break;
+        	case "ERROR":  newseverity = PersistentEventSeverity.MAJOR.name();break;
+        	case "WARNING":  newseverity = PersistentEventSeverity.WARNING.name();break;
+        	case "NOTICE":  newseverity = PersistentEventSeverity.INFO.name();break;
+        	case "INFO":  newseverity = PersistentEventSeverity.INFO.name();break;
+        	case "DEBUG":  newseverity = PersistentEventSeverity.INFO.name();break;
+        	case "UNKNOWN":  newseverity = PersistentEventSeverity.INFO.name();break;
         	
 		}
+		System.out.println("***************** severity: " + severity);
+		System.out.println("***************** newseverity: " + newseverity);
 		return newseverity;
 	}
 	
