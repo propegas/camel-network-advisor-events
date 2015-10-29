@@ -8,7 +8,6 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -44,7 +43,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import ru.at_consulting.itsm.device.Device;
 import ru.at_consulting.itsm.event.Event;
 import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorDevice;
 //import ru.atc.camel.networkadvisor.events.api.Feed2;
@@ -410,6 +408,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 				
 	}
 	
+	/*
 	private Device genDeviceObj( RESTNetworkAdvisorDevice device ) {
 		Device gendevice = null;
 		//Long timestamp;
@@ -431,6 +430,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		return gendevice;
 				
 	}
+	*/
 
 	private int getEventId(String key) {
 		int id = -1;
