@@ -129,7 +129,7 @@ public class Main {
 		    	//.marshal().json(JsonLibrary.Jackson,Event.class)
 		    		.marshal(myJson)
 		    	//.marshal(myJaxb)
-		    		.to("file://out?fileName=event-${id}${header.EventId}")
+		    		.log("${id} ${header.EventId}")
 		    		.to("activemq:BSNA-tgc1-san-Event.queue");
 				}
 		});
