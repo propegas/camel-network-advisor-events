@@ -130,7 +130,7 @@ public class Main {
 		    		.marshal(myJson)
 		    	//.marshal(myJaxb)
 		    		.log("${id} ${header.EventId}")
-		    		.to("activemq:BSNA-tgc1-san-Event.queue");
+		    		.to("activemq:BSNA-tgc1-san-Events.queue");
 				}
 		});
 		
