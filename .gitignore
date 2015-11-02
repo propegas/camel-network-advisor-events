@@ -2,3 +2,5 @@
 /restlogs.log
 /out/
 /sendedEvents.dat
+/.classpath
+/.project
