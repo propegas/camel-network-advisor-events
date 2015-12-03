@@ -35,10 +35,10 @@ public class Main {
 		if (activemq_port == null || activemq_port == "" )
 			activemq_port = "61616";
 		if (activemq_ip == null || activemq_ip == "" )
-			activemq_ip = "192.168.157.73";
+			activemq_ip = "172.20.19.195";
 		
 		logger.info("activemq_ip: " + activemq_ip);
-		logger.info("sdce_port: " + activemq_port);
+		logger.info("activemq_port: " + activemq_port);
 		
 		org.apache.camel.main.Main main = new org.apache.camel.main.Main();
 		main.enableHangupSupport();
