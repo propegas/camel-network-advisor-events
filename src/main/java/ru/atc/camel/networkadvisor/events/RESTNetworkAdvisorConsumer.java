@@ -9,6 +9,7 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,7 +49,6 @@ import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorDevice;
 //import ru.atc.camel.networkadvisor.events.api.Feed2;
 import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorEvents;
 
-
 public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 	
 	private static Logger logger = LoggerFactory.getLogger(Main.class);
@@ -73,6 +73,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         super(endpoint, processor);
         this.endpoint = endpoint;
         //this.afterPoll();
+        this.setTimeUnit(TimeUnit.MINUTES);
+        this.setInitialDelay(0);
         this.setDelay(endpoint.getConfiguration().getDelay());
 	}
 	
@@ -86,6 +88,82 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		// only one operation implemented for now !
 		throw new IllegalArgumentException("Incorrect operation: " + operationPath);
 	}
+	
+	@Override
+	public long beforePoll(long timeout) throws Exception {
+		
+		logger.info("*** Before Poll!!!");
+		// only one operation implemented for now !
+		//throw new IllegalArgumentException("Incorrect operation: ");
+		
+		//send HEARTBEAT
+		genHeartbeatMessage(getEndpoint().createExchange());
+		
+		return timeout;
+	}
+	
+	private void genErrorMessage(String message) {
+		// TODO Auto-generated method stub
+		long timestamp = System.currentTimeMillis();
+		timestamp = timestamp / 1000;
+		String textError = "Возникла ошибка при работе адаптера: ";
+		Event genevent = new Event();
+		genevent.setMessage(textError + message);
+		genevent.setEventCategory("ADAPTER");
+		genevent.setSeverity(PersistentEventSeverity.CRITICAL.name());
+		genevent.setTimestamp(timestamp);
+		genevent.setEventsource("BSNA_EVENT_ADAPTER");
+		
+		logger.info(" **** Create Exchange for Error Message container");
+        Exchange exchange = getEndpoint().createExchange();
+        exchange.getIn().setBody(genevent, Event.class);
+        
+        exchange.getIn().setHeader("EventIdAndStatus", "Error_" +timestamp);
+        exchange.getIn().setHeader("Timestamp", timestamp);
+        exchange.getIn().setHeader("queueName", "Events");
+        exchange.getIn().setHeader("Type", "Error");
+
+        try {
+			getProcessor().process(exchange);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} 
+		
+	}
+
+	
+	public static void genHeartbeatMessage(Exchange exchange) {
+		// TODO Auto-generated method stub
+		long timestamp = System.currentTimeMillis();
+		timestamp = timestamp / 1000;
+		//String textError = "Возникла ошибка при работе адаптера: ";
+		Event genevent = new Event();
+		genevent.setMessage("Сигнал HEARTBEAT от адаптера");
+		genevent.setEventCategory("ADAPTER");
+		genevent.setObject("HEARTBEAT");
+		genevent.setSeverity(PersistentEventSeverity.OK.name());
+		genevent.setTimestamp(timestamp);
+		genevent.setEventsource("BSNA_EVENT_ADAPTER");
+		
+		logger.info(" **** Create Exchange for Heartbeat Message container");
+        //Exchange exchange = getEndpoint().createExchange();
+        exchange.getIn().setBody(genevent, Event.class);
+        
+        exchange.getIn().setHeader("Timestamp", timestamp);
+        exchange.getIn().setHeader("queueName", "Events");
+        exchange.getIn().setHeader("Type", "Heartbeat");
+
+        try {
+        	//Processor processor = getProcessor();
+        	//.process(exchange);
+        	//processor.process(exchange);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			//e.printStackTrace();
+		} 
+	}
+	
 	
 	private CloseableHttpClient HTTPinit(){
 		
@@ -127,7 +205,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 	    return httpclient;
 	}
 	
-	private String getWStoken( CloseableHttpClient httpclient ){
+	private String getWStoken( CloseableHttpClient httpclient ) throws ClientProtocolException, IOException {
 		
 		String restapiurl = endpoint.getConfiguration().getRestapiurl();
 		String WSusername = endpoint.getConfiguration().getWsusername();
@@ -147,11 +225,13 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		} catch (ClientProtocolException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			return null;
+			throw e;
+			//return null;
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			return null;
+			throw e;
+			//return null;
 		}
 		
 		Header head = response.getFirstHeader("WStoken");
@@ -161,7 +241,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		if (response.getStatusLine().getStatusCode() != 200) {
 			//throw new RuntimeException("Feedly API error with return code: " + response.getStatusLine().getStatusCode());
 			System.out.println("Network Advisor RST API error with return code: " + response.getStatusLine().getStatusCode());
-			return null;
+			//return null;
+			throw new RuntimeException("Failed while HTTP API connect.");
 		}
 		
 		setSavedWStoken(WStoken);
@@ -185,8 +266,11 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		
 		if (WStoken == null){
 			WStoken = getWStoken(httpclient);
-			if (WStoken == null)
+			if (WStoken == null) {
+				httpclient.close();
 				throw new RuntimeException("Failed while WSToken retrieving.");
+			}
+				
 		}
 		//System.out.println("*****************WSToken: " + WStoken);
 		
@@ -205,10 +289,12 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		br.close();
 		sr.close();
 		
+		httpclient.close();
+		
 		return json;
 	}
 	
-	private  RESTNetworkAdvisorDevice getDeviceByWwn( String wwn, String WStoken ) {
+	private  RESTNetworkAdvisorDevice getDeviceByWwn( String wwn, String WStoken ) throws ClientProtocolException, IOException {
 		String uri = String.format("resourcegroups/All/fcswitches/%s", wwn);
 		
 		//System.out.println("***************** URL2: " + uri);
@@ -219,9 +305,12 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		} catch (ClientProtocolException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
+			throw e;
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
+			throw e;
+			
 		}
 		
 		JsonArray devices = (JsonArray) json.get("fcSwitches");
@@ -241,7 +330,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		
 	}
 	
-	private int processSearchEvents() throws Exception {
+	private int processSearchEvents() throws ClientProtocolException, IOException, Exception {
 		
 		//Long timestamp;
 		
@@ -262,68 +351,102 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		logger.info("Try to get " + initcount + " Events." );
 		
 		logger.info("Get events URL: " + uri);
-		JsonObject json = performGetRequest(uri, null);
 		
-		//System.out.println("*****************  JSON: " + json);
-		
-		JsonArray events = (JsonArray) json.get("events");
-		//JsonElement serverName = json.get("serverName");
-		//List<RESTNetworkAdvisorEvents> eventList = new ArrayList<RESTNetworkAdvisorEvents>();
-		List<Event> eventList = new ArrayList<Event>();
-		Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
-		
-		int EventId = 0;
-		int lastEventId = 0;
-		int i = 0;
-		int j = 0;
-		boolean findlast = false;
-		
-		//System.out.println("*****************lastEventId: " + lastEventId);
-		int storedLastId = endpoint.getConfiguration().getLastid();
-		//System.out.println("*****************storedLastId: " + storedLastId);
-		
-		logger.info("Received " + events.size() + " Total Events." );
-		
-		for (JsonElement f : events) {
-			i++;
-			logger.debug(f.toString());
+		int lastEventId;
+		int j;
+		boolean findlast;
+		try {
+			JsonObject json = performGetRequest(uri, null);
 			
+			//System.out.println("*****************  JSON: " + json);
 			
-			RESTNetworkAdvisorEvents event = gson.fromJson(f, RESTNetworkAdvisorEvents.class);
-			Event genevent = new Event();
+			JsonArray events = (JsonArray) json.get("events");
+			//JsonElement serverName = json.get("serverName");
+			//List<RESTNetworkAdvisorEvents> eventList = new ArrayList<RESTNetworkAdvisorEvents>();
+			List<Event> eventList = new ArrayList<Event>();
+			Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 			
-			EventId = getEventId(event.getKey());
-			if ( i == 1 )
-				lastEventId = EventId;
+			int EventId = 0;
+			lastEventId = 0;
+			int i = 0;
+			j = 0;
+			findlast = false;
 			
-			System.out.println("*****************EventId: " + EventId);
+			//System.out.println("*****************lastEventId: " + lastEventId);
+			int storedLastId = endpoint.getConfiguration().getLastid();
+			//System.out.println("*****************storedLastId: " + storedLastId);
 			
-			if (EventId != -1){
-				if (EventId > storedLastId){
-					j++;
-					genevent = genEventObj( event );
-					eventList.add(genevent);
-					
-					logger.info("Create Exchange container");
-			        Exchange exchange = getEndpoint().createExchange();
-			        exchange.getIn().setBody(genevent, Event.class);
-			        exchange.getIn().setHeader("EventId", event.getKey());
-			        //exchange.getIn().setHe
-			        //System.out.println("There is an exchange going on.");
-			        //System.out.println(exchange.getIn().getHeader("CamelFileName"));
-			        //System.out.println(exchange.getIn().getBody());
-			        //System.out.println(exchange.getIn().getBody().getClass());
-			        //exchange.getIn().setBody(serverName, Object.class);
-			        getProcessor().process(exchange); 
-					
+			logger.info("Received " + events.size() + " Total Events." );
+			
+			for (JsonElement f : events) {
+				i++;
+				logger.debug(f.toString());
+				
+				
+				RESTNetworkAdvisorEvents event = gson.fromJson(f, RESTNetworkAdvisorEvents.class);
+				Event genevent = new Event();
+				
+				EventId = getEventId(event.getKey());
+				if ( i == 1 )
+					lastEventId = EventId;
+				
+				System.out.println("*****************EventId: " + EventId);
+				
+				if (EventId != -1){
+					if (EventId > storedLastId){
+						j++;
+						genevent = genEventObj( event );
+						eventList.add(genevent);
+						
+						logger.info("Create Exchange container");
+				        Exchange exchange = getEndpoint().createExchange();
+				        exchange.getIn().setBody(genevent, Event.class);
+				        exchange.getIn().setHeader("EventId", event.getKey());
+				        //exchange.getIn().setHe
+				        //System.out.println("There is an exchange going on.");
+				        //System.out.println(exchange.getIn().getHeader("CamelFileName"));
+				        //System.out.println(exchange.getIn().getBody());
+				        //System.out.println(exchange.getIn().getBody().getClass());
+				        //exchange.getIn().setBody(serverName, Object.class);
+				        getProcessor().process(exchange); 
+						
+					}
+					else {
+						findlast = true;
+						break;
+					}
 				}
-				else {
-					findlast = true;
-					break;
-				}
+				
+						
 			}
-			
-					
+		}  catch (NullPointerException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			logger.error( String.format("Error while get Events from SQL: %s ", e));
+			genErrorMessage(e.toString());
+			//dataSource.close();
+			return 0;
+		}
+		catch (Error e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			logger.error( String.format("Error while get Events from SQL: %s ", e));
+			genErrorMessage(e.toString());
+			//dataSource.close();
+			return 0;
+		}
+		catch (Throwable e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			logger.error( String.format("Error while get Events from SQL: %s ", e));
+			genErrorMessage(e.getMessage() + " " + e.toString());
+			//dataSource.close();
+			return 0;
+		}
+		finally
+		{
+			//dataSource.close();
+			//return 0;
 		}	
 		
 		logger.info("Received " + j + " new Events." );
@@ -358,7 +481,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         return 1;
 	}
 	
-	private Event genEventObj( RESTNetworkAdvisorEvents event ) {
+	private Event genEventObj( RESTNetworkAdvisorEvents event ) throws ClientProtocolException, IOException {
 		Event genevent;
 		genevent = new Event();
 		String wwn = null;

@@ -4,6 +4,8 @@ import java.io.File;
 import javax.jms.ConnectionFactory;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.camel.Exchange;
+import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.jms.JmsComponent;
 import org.apache.camel.component.properties.PropertiesComponent;
@@ -77,6 +79,18 @@ public class Main {
 		        File cachefile = new File("sendedEvents.dat");
 		        cachefile.createNewFile();
 		        
+		     // Heartbeats
+				from("timer://foo?period={{heartbeatsdelay}}")
+		        .process(new Processor() {
+					public void process(Exchange exchange) throws Exception {
+						RESTNetworkAdvisorConsumer.genHeartbeatMessage(exchange);
+					}
+				})
+				//.bean(WsdlNNMConsumer.class, "genHeartbeatMessage", exchange)
+		        .marshal(myJson)
+		        .to("activemq:{{eventsqueue}}")
+				.log("*** Heartbeat: ${id}");
+		        
 				from("restna://events?"
 		    			+ "delay={{delay}}&"
 		    			+ "restapiurl={{restapiurl}}&"
@@ -88,49 +102,22 @@ public class Main {
 		    			+ "initcount={{initcount}}&"
 		    			+ "specialEvent={{specialEvent}}")
 		    	
-		    	//.split(body().convertTo(Event.class));
-				//.split(body()).convertBodyTo(Event.class);
-				//.convertBodyTo(Event.class);
-				//String "getKey";
-				//ExpressionNode id = test.bean(Event.class, "getExternalid");
+		    	.choice()
+				.when(header("Type").isEqualTo("Error"))
+					.marshal(myJson)
+					.to("activemq:{{eventsqueue}}")
+					.log("Error: ${id} ${header.EventUniqId}")
+					
+				.otherwise()
 				
-				/*
-				from("restna://events?"
-		    			+ "delay={{delay}}&"
-		    			+ "restapiurl={{restapiurl}}&"
-		    			+ "wsusername={{wsusername}}&"
-		    			+ "wspassword={{wspassword}}&"
-		    			+ "eventsuri={{eventsuri}}&"
-		    			+ "startindex={{startindex}}&"
-		    			+ "count={{count}}&"
-		    			+ "specialEvent={{specialEvent}}")
-		    	
-		    	//.split(body().convertTo(Event.class))
-				.split(body())
-				*/
-				.idempotentConsumer(
+					.idempotentConsumer(
 			             header("EventId"),
 			             FileIdempotentRepository.fileIdempotentRepository(cachefile)
 			             )
 				
-				//.memoryIdempotentRepository(200)
-				//ValueBuilder vvv = new ValueBuilder(simple("${body.externalid}"));
-				//logger.info("vvv " + vvv.toString());
-				//System.out.println("vvv " + vvv.toString());
-
-				//test.getExpression("${body.externalid}");
-				//test.transform().simple("OrderId: ${bean:orderIdGenerator?method=generateId}");
-				//${body.getExternalid}${body.externalid}
-				
-		    	//	.log(body().toString())
-		    	//.log("*-*-*-*-*-*-*-*-* Processing ${id}")
-		    	//.log("${id} ${body.getKey} ${body.key} ")
-		    	//myJson.
-		    	//.marshal().json(JsonLibrary.Jackson,Event.class)
-		    		.marshal(myJson)
-		    	//.marshal(myJaxb)
+					.marshal(myJson)
 		    		.log("${id} ${header.EventId}")
-		    		.to("activemq:BSNA-tgc1-san-Events.queue");
+		    		.to("activemq:{{eventsqueue}}");
 				}
 		});
 		
