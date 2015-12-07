@@ -153,8 +153,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         exchange.getIn().setBody(genevent, Event.class);
         
         exchange.getIn().setHeader("Timestamp", timestamp);
-        exchange.getIn().setHeader("queueName", "Events");
-        exchange.getIn().setHeader("Type", "Heartbeat");
+        exchange.getIn().setHeader("queueName", "Heartbeats");
+        exchange.getIn().setHeader("Type", "Heartbeats");
+        exchange.getIn().setHeader("Source", "BSNA_EVENT_ADAPTER");
 
         try {
         	//Processor processor = getProcessor();
