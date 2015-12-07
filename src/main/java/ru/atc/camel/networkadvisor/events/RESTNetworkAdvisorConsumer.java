@@ -425,23 +425,23 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 		}  catch (NullPointerException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			logger.error( String.format("Error while get Events from SQL: %s ", e));
-			genErrorMessage(e.toString());
+			logger.error( String.format("Error while get Events from API: %s ", e));
+			genErrorMessage(e.getMessage() + " " + e.toString());
 			//dataSource.close();
 			return 0;
 		}
 		catch (Error e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			logger.error( String.format("Error while get Events from SQL: %s ", e));
-			genErrorMessage(e.toString());
+			logger.error( String.format("Error while get Events from API: %s ", e));
+			genErrorMessage(e.getMessage() + " " + e.toString());
 			//dataSource.close();
 			return 0;
 		}
 		catch (Throwable e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			logger.error( String.format("Error while get Events from SQL: %s ", e));
+			logger.error( String.format("Error while get Events from API: %s ", e));
 			genErrorMessage(e.getMessage() + " " + e.toString());
 			//dataSource.close();
 			return 0;
