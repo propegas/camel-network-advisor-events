@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<configuration version="2">
+    <enrichRules id="1">
+        <ruleInput>
+            <statement id="1" fieldName="message" fieldValue="^.*Event: Login, Info: SNMP login attempt via.*$"/>
+            <statement id="2" fieldName="status" fieldValue=".*$"/>
+            <statement id="3" fieldName="object" fieldValue=".*$"/>
+            <statement id="4" fieldName="eventCategory" fieldValue=".*"/>
+            <!-- <status><![CDATA[/^.*$/gs]]></status>-->
+        </ruleInput>
+        <ruleOutput>
+            <statement id="1" fieldName="status" fieldValue="CLOSED"/>
+        </ruleOutput>
+    </enrichRules>
+    <enrichRules id="2">
+        <ruleInput>
+            <statement id="1" fieldName="message" fieldValue=".*changed its operational state to online*$"/>
+        </ruleInput>
+        <ruleOutput>
+            <statement id="1" fieldName="status" fieldValue="CLOSED"/>
+        </ruleOutput>
+    </enrichRules>
+</configuration>

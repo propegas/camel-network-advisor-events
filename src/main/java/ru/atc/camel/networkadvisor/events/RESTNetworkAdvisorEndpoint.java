@@ -7,47 +7,45 @@ import org.apache.camel.impl.DefaultPollingEndpoint;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 
-@UriEndpoint(scheme="restna", title="RestNA", syntax="restna://operationPath", consumerOnly=true, consumerClass=RESTNetworkAdvisorConsumer.class, label="restna")
+@UriEndpoint(scheme = "restna", title = "RestNA", syntax = "restna://operationPath", consumerOnly = true, consumerClass = RESTNetworkAdvisorConsumer.class, label = "restna")
 public class RESTNetworkAdvisorEndpoint extends DefaultPollingEndpoint {
 
-	public RESTNetworkAdvisorEndpoint(String uri, String operationPath, RESTNetworkAdvisorComponent component) {
-		super(uri, component);
-		this.operationPath = operationPath;
-	}
-	
-	private String operationPath;
+    private String operationPath;
+    @UriParam
+    private RESTNetworkAdvisorConfiguration configuration;
 
-	@UriParam
-	private RESTNetworkAdvisorConfiguration configuration;
+    public RESTNetworkAdvisorEndpoint(String uri, String operationPath, RESTNetworkAdvisorComponent component) {
+        super(uri, component);
+        this.operationPath = operationPath;
+    }
 
-	public Producer createProducer() throws Exception {
-		throw new UnsupportedOperationException("RESTNetworkAdvisorProducer is not implemented");
-	}
+    public Producer createProducer() throws Exception {
+        throw new UnsupportedOperationException("RESTNetworkAdvisorProducer is not implemented");
+    }
 
-	@Override
-	public Consumer createConsumer(Processor processor) throws Exception {
-		RESTNetworkAdvisorConsumer consumer = new RESTNetworkAdvisorConsumer(this, processor);
-        return consumer;
-	}
+    @Override
+    public Consumer createConsumer(Processor processor) throws Exception {
+        return new RESTNetworkAdvisorConsumer(this, processor);
+    }
 
-	public boolean isSingleton() {
-		return true;
-	}
+    public boolean isSingleton() {
+        return true;
+    }
 
-	public String getOperationPath() {
-		return operationPath;
-	}
+    public String getOperationPath() {
+        return operationPath;
+    }
 
-	public void setOperationPath(String operationPath) {
-		this.operationPath = operationPath;
-	}
+    public void setOperationPath(String operationPath) {
+        this.operationPath = operationPath;
+    }
 
-	public RESTNetworkAdvisorConfiguration getConfiguration() {
-		return configuration;
-	}
+    public RESTNetworkAdvisorConfiguration getConfiguration() {
+        return configuration;
+    }
 
-	public void setConfiguration(RESTNetworkAdvisorConfiguration configuration) {
-		this.configuration = configuration;
-	}
-	
+    public void setConfiguration(RESTNetworkAdvisorConfiguration configuration) {
+        this.configuration = configuration;
+    }
+
 }

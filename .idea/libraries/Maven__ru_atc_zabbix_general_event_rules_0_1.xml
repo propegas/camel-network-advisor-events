@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="Maven: ru.atc.zabbix.general:event-rules:0.1">
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/ru/atc/zabbix/general/event-rules/0.1/event-rules-0.1.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$MAVEN_REPOSITORY$/ru/atc/zabbix/general/event-rules/0.1/event-rules-0.1-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$MAVEN_REPOSITORY$/ru/atc/zabbix/general/event-rules/0.1/event-rules-0.1-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>
