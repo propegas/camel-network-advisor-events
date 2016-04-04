@@ -54,7 +54,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
     private static final int HTTP_OK_STATUS = 200;
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
-    private static String SavedWStoken;
+    private static String savedWStoken;
     private static List<EnrichRule> enrichRules;
     private final RESTNetworkAdvisorEndpoint endpoint;
 
@@ -92,11 +92,12 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
     }
 
     public static String getSavedWStoken() {
-        return SavedWStoken;
+        return savedWStoken;
     }
 
-    public void setSavedWStoken(String savedWStoken) {
-        SavedWStoken = savedWStoken;
+    public void setSavedWStoken(String wsToken) {
+        logger.debug("*** Saving savedWStoken: " + wsToken);
+        savedWStoken = wsToken;
     }
 
     @Override
@@ -200,9 +201,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         String wsUsername = endpoint.getConfiguration().getWsusername();
         String wsPassword = endpoint.getConfiguration().getWspassword();
 
-        logger.info("***************** restapiurl: " + restapiUrl);
-        logger.info("***************** WSusername: " + wsUsername);
-        logger.info("***************** WSpassword: " + wsPassword);
+        logger.debug("***************** restapiurl: " + restapiUrl);
+        logger.debug("***************** WSusername: " + wsUsername);
+        logger.debug("***************** WSpassword: " + wsPassword);
 
         HttpPost request = new HttpPost(restapiUrl + "login");
         request.addHeader("Accept", "application/vnd.brocade.networkadvisor+json;version=v1");
@@ -225,6 +226,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
         Header head = response.getFirstHeader("WStoken");
         String wsToken = head.getValue();
+
+        logger.debug("***************** WStoken: " + wsToken);
         //System.out.println("***************** WStoken: " + WStoken);
 
         if (response.getStatusLine().getStatusCode() != HTTP_OK_STATUS) {
@@ -234,6 +237,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
             throw new RuntimeException("Failed while HTTP API connect.");
         }
 
+        logger.debug("******* Save WSToken: " + wsToken);
         setSavedWStoken(wsToken);
 
         return wsToken;
@@ -261,7 +265,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                 throw new RuntimeException("Failed while WSToken retrieving.");
             }
 
-        }
+        } else
+            wsTokenFinal = wsToken;
+
         //System.out.println("*****************WSToken: " + wsToken);
 
         //System.out.println("*****************URL: " + restapiurl + uri);
@@ -288,6 +294,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         String uri = String.format("resourcegroups/All/fcswitches/%s", wwn);
 
         //System.out.println("***************** URL2: " + uri);
+
+        logger.debug("*** WSToken : " + wsToken);
 
         JsonObject json;
         try {
@@ -373,6 +381,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
             logger.info("Received " + events.size() + " Total Events.");
 
+            logger.debug("*** WSToken : " + getSavedWStoken());
+
             for (JsonElement f : events) {
                 i++;
                 logger.debug(f.toString());
@@ -384,7 +394,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                 if (i == 1)
                     lastEventId = eventId;
 
-                System.out.println("*****************eventId: " + eventId);
+                logger.debug("*****************eventId: " + eventId);
 
                 if (eventId != -1) {
                     if (eventId > storedLastId) {
@@ -452,17 +462,21 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
     private Event processEnrichmentRules(Event event) {
         //enrichRules = eventRules.getEnrichRules();
+
+        logger.info("**** Process enrichment rules...");
+
         for (EnrichRule enrichRule : enrichRules) {
-            logger.info(enrichRule.getId() + "");
-            logger.info("******* Inputs: ");
+            logger.debug("Rule # " + enrichRule.getId());
+
             RuleInput inputs = enrichRule.getRuleInput();
 
             List<Statement> inputStatements = inputs.getStatements();
             //System.out.println("******* InputStatements: " + inputStatements);
             boolean statementsMatches = true;
             for (Statement statement : inputStatements) {
-                logger.info("******* statement field name: " + statement.getFieldName());
-                logger.info("******* statement field value: " + statement.getFieldValue());
+                logger.debug("******* statement #: " + statement.getId());
+                logger.debug("******* statement field name: " + statement.getFieldName());
+                logger.debug("******* statement field value: " + statement.getFieldValue());
 
                 String methodSuffix = Character.toUpperCase(statement.getFieldName().charAt(0)) + statement.getFieldName().substring(1);
                 Method method = null;
@@ -482,28 +496,30 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                     } catch (InvocationTargetException e) {
                         e.printStackTrace();
                     }
-                    logger.info("******* eventValue: " + eventValue);
+
                     if (eventValue != null && eventValue.matches(statement.getFieldValue())) {
-                        logger.info("******* Statement MATCHES !!!!!: " + statement.getId());
+                        logger.info(String.format("******* rule %d, statement %d: Statement MATCHES!",
+                                enrichRule.getId(), statement.getId()));
 
                     } else {
                         statementsMatches = false;
-                        logger.info("******* Statement DOES NOT MATCHES !!!!!");
+                        logger.info(String.format("******* rule %d, statement %d: Statement DOES NOT MATCH!",
+                                enrichRule.getId(), statement.getId()));
                         break;
                     }
                 }
 
             }
 
-            logger.info("******* Outputs: ");
+            logger.debug("******* Outputs: ");
             RuleOutput outputs = enrichRule.getRuleOutput();
 
             List<Statement> outputStatements = outputs.getStatements();
             //logger.debug("******* outputStatements: " + outputStatements);
             if (statementsMatches) {
                 for (Statement outputStatement : outputStatements) {
-                    logger.info("******* statement field name: " + outputStatement.getFieldName());
-                    logger.info("******* statement field value: " + outputStatement.getFieldValue());
+                    logger.debug("******* statement field name: " + outputStatement.getFieldName());
+                    logger.debug("******* statement field value: " + outputStatement.getFieldValue());
 
                     String methodSuffix = Character.toUpperCase(outputStatement.getFieldName().charAt(0)) + outputStatement.getFieldName().substring(1);
                     Method reflectSetMethod = null;
@@ -516,7 +532,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                     if (reflectSetMethod != null) {
                         try {
                             reflectSetMethod.invoke(event, outputStatement.getFieldValue());
-                            logger.info("******* NewEventValue: " + outputStatement.getFieldValue());
+                            logger.info(String.format("******* New Value for %s: %s",
+                                    outputStatement.getFieldName(), outputStatement.getFieldValue()));
+                            //logger.debug("******* NewEventValue: " + outputStatement.getFieldValue());
                         } catch (IllegalAccessException e) {
                             e.printStackTrace();
                             logger.error(String.format("Error while invoke Enrichment Rules: %s ", e));
@@ -531,6 +549,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                 }
             }
         }
+
+        logger.info("**** Stop process enrichment rules.");
+
         return event;
     }
 
@@ -556,6 +577,11 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
     }
 
     private Event genEventObj(RESTNetworkAdvisorEvents event) throws IOException {
+
+        logger.debug("******* Try to generate event... ");
+        logger.debug("*** WSToken : " + getSavedWStoken());
+        logger.debug("*** savedWSToken : " + savedWStoken);
+
         Event genevent;
         genevent = new Event();
         String wwn;
@@ -570,8 +596,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         hostName = event.getSourceName();
         if (wwn.length() != 0) {
 
+            logger.debug("******* Try to get device info by wwn... ");
             //System.out.println("***************** wwn3: ***" + wwn.length() + "***");
-            networkAdvisorDevice = getDeviceByWwn(wwn, RESTNetworkAdvisorConsumer.getSavedWStoken());
+            networkAdvisorDevice = getDeviceByWwn(wwn, getSavedWStoken());
             logger.info("***************** networkAdvisorDevice.getName(): " + networkAdvisorDevice.getName());
             logger.info("***************** event.getSourceName(): " + event.getSourceName());
             //System.out.println("***************** networkAdvisorDevice.getName(): " + networkAdvisorDevice.getName());
@@ -599,7 +626,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         genevent.setCi(String.format("%s:%s", endpoint.getConfiguration().getSource(), event.getNodeWwn()));
         //System.out.println(event.toString());
 
-        //logger.info(genevent.toString());
+        logger.debug("******* Event generated. ");
+        logger.debug(genevent.toString());
 
         return genevent;
 
