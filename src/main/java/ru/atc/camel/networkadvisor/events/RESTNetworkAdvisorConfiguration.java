@@ -14,6 +14,8 @@ public class RESTNetworkAdvisorConfiguration {
     private String source;
     private int lastid;
 
+    private String adaptername;
+
     @UriParam
     private String query;
 
@@ -126,5 +128,13 @@ public class RESTNetworkAdvisorConfiguration {
 
     public void setSource(String source) {
         this.source = source;
+    }
+
+    public String getAdaptername() {
+        return adaptername;
+    }
+
+    public void setAdaptername(String adaptername) {
+        this.adaptername = adaptername;
     }
 }

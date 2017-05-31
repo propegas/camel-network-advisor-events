@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" attributeFormDefault="unqualified"
+           elementFormDefault="qualified">
+    <xs:element name="configuration">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element ref="enrichRules" maxOccurs="unbounded" minOccurs="0"/>
+            </xs:sequence>
+            <xs:attribute type="xs:string" name="version"/>
+        </xs:complexType>
+    </xs:element>
+    <xs:element name="statement">
+        <xs:complexType>
+            <xs:simpleContent>
+                <xs:extension base="xs:string">
+                    <xs:attribute type="xs:string" name="id" use="optional"/>
+                    <xs:attribute type="xs:string" name="fieldName" use="optional"/>
+                    <xs:attribute type="xs:string" name="fieldValue" use="optional"/>
+                </xs:extension>
+            </xs:simpleContent>
+        </xs:complexType>
+    </xs:element>
+    <xs:element name="ruleOutput">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element ref="statement"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+    <xs:element name="ruleInput">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element ref="statement" maxOccurs="unbounded" minOccurs="0"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+    <xs:element name="enrichRules">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element ref="ruleInput">
+                    <xs:annotation>
+                        <xs:documentation>&lt;status>&lt;![CDATA[/^.*$/gs]]&gt;&lt;/status></xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element ref="ruleOutput"/>
+            </xs:sequence>
+            <xs:attribute type="xs:string" name="id" use="optional"/>
+        </xs:complexType>
+    </xs:element>
+</xs:schema>

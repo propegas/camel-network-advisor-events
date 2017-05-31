@@ -2,6 +2,7 @@ package ru.atc.camel.networkadvisor.events;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.camel.Exchange;
+import org.apache.camel.LoggingLevel;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.jms.JmsComponent;
@@ -11,17 +12,28 @@ import org.apache.camel.model.dataformat.JsonLibrary;
 import org.apache.camel.processor.idempotent.FileIdempotentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.at_consulting.itsm.event.Event;
+import ru.atc.adapters.type.Event;
 
 import javax.jms.ConnectionFactory;
 import java.io.File;
-import java.util.Objects;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
+import static ru.atc.adapters.message.CamelMessageManager.genHeartbeatMessage;
 
 public final class Main {
 
-    private static final Logger logger = LoggerFactory.getLogger(Main.class);
-    private static String activemq_port;
-    private static String activemq_ip;
+    private static final Logger logger = LoggerFactory.getLogger("mainLogger");
+    private static final Logger loggerError = LoggerFactory.getLogger("errorLogger");
+    private static final int CACHE_SIZE = 2500;
+    private static final int MAX_FILE_SIZE = 512000;
+
+    private static String activemqPort;
+    private static String activemqIp;
+
+    private static String adaptername;
 
     private Main() {
 
@@ -32,90 +44,110 @@ public final class Main {
         logger.info("Starting Custom Apache Camel component example");
         logger.info("Press CTRL+C to terminate the JVM");
 
-        if (args.length == 2) {
-            activemq_port = args[1];
-            activemq_ip = args[0];
+        try {
+            // get Properties from file
+            InputStream input = new FileInputStream("restna.properties");
+            Properties prop = new Properties();
+
+            // load a properties file
+            prop.load(input);
+            input.close();
+
+            adaptername = prop.getProperty("adaptername");
+            activemqIp = prop.getProperty("activemq.ip");
+            activemqPort = prop.getProperty("activemq.port");
+        } catch (IOException ex) {
+            logger.error("Error while open and parsing properties file", ex);
         }
 
-        if (activemq_port == null || Objects.equals(activemq_port, ""))
-            activemq_port = "61616";
-        if (activemq_ip == null || Objects.equals(activemq_ip, ""))
-            activemq_ip = "172.20.19.195";
-
-        logger.info("activemq_ip: " + activemq_ip);
-        logger.info("activemq_port: " + activemq_port);
+        logger.info("**** adaptername: " + adaptername);
+        logger.info("activemqIp: " + activemqIp);
+        logger.info("activemqPort: " + activemqPort);
 
         org.apache.camel.main.Main main = new org.apache.camel.main.Main();
-        main.enableHangupSupport();
-
-        main.addRouteBuilder(new RouteBuilder() {
-
-            @Override
-            public void configure() throws Exception {
-
-                JsonDataFormat myJson = new JsonDataFormat();
-                myJson.setPrettyPrint(true);
-                myJson.setLibrary(JsonLibrary.Jackson);
-                myJson.setJsonView(Event.class);
-                //myJson.setPrettyPrint(true);
-
-                PropertiesComponent properties = new PropertiesComponent();
-                properties.setLocation("classpath:restna.properties");
-                getContext().addComponent("properties", properties);
-
-                ConnectionFactory connectionFactory = new ActiveMQConnectionFactory(
-                        "tcp://" + activemq_ip + ":" + activemq_port
-                );
-                getContext().addComponent("activemq", JmsComponent.jmsComponentAutoAcknowledge(connectionFactory));
-
-                File cachefile = new File("sendedEvents.dat");
-                //cachefile.createNewFile();
-
-                // Heartbeats
-                from("timer://foo?period={{heartbeatsdelay}}")
-                        .process(new Processor() {
-                            public void process(Exchange exchange) throws Exception {
-                                RESTNetworkAdvisorConsumer.genHeartbeatMessage(exchange);
-                            }
-                        })
-                        //.bean(WsdlNNMConsumer.class, "genHeartbeatMessage", exchange)
-                        .marshal(myJson)
-                        .to("activemq:{{heartbeatsqueue}}")
-                        .log("*** Heartbeat: ${id}");
-
-                from(new StringBuilder()
-                        .append("restna://events?")
-                        .append("delay={{delay}}&")
-                        .append("restapiurl={{restapiurl}}&")
-                        .append("wsusername={{wsusername}}&")
-                        .append("wspassword={{wspassword}}&")
-                        .append("eventsuri={{eventsuri}}&")
-                        .append("startindex={{startindex}}&")
-                        .append("source={{source}}&")
-                        .append("count={{count}}&")
-                        .append("initcount={{initcount}}&")
-                        .append("specialEvent={{specialEvent}}")
-                        .toString())
-
-                        .choice()
-                        .when(header("Type").isEqualTo("Error"))
-                        .marshal(myJson)
-                        .to("activemq:{{eventsqueue}}")
-                        .log("Error: ${id} ${header.EventUniqId}")
-
-                        .otherwise()
-
-                        .idempotentConsumer(
-                                header("EventId"),
-                                FileIdempotentRepository.fileIdempotentRepository(cachefile)
-                        )
-
-                        .marshal(myJson)
-                        .log("${id} ${header.EventId}")
-                        .to("activemq:{{eventsqueue}}");
-            }
-        });
-
+        main.addRouteBuilder(new IntegrationRoute());
         main.run();
     }
+
+    private static class IntegrationRoute extends RouteBuilder {
+
+        @Override
+        public void configure() throws Exception {
+
+            JsonDataFormat myJson = new JsonDataFormat();
+            myJson.setPrettyPrint(true);
+            myJson.setLibrary(JsonLibrary.Jackson);
+            myJson.setJsonView(Event.class);
+            //myJson.setPrettyPrint(true);
+
+            PropertiesComponent properties = new PropertiesComponent();
+            properties.setLocation("classpath:restna.properties");
+            getContext().addComponent("properties", properties);
+
+            ConnectionFactory connectionFactory = new ActiveMQConnectionFactory(
+                    "tcp://" + activemqIp + ":" + activemqPort
+            );
+            getContext().addComponent("activemq", JmsComponent.jmsComponentAutoAcknowledge(connectionFactory));
+
+            File cachefile = new File("sendedEvents.dat");
+            if (cachefile.exists()) {
+                boolean delete = cachefile.delete();
+            }
+            logger.info(String.format("Cache file created: %s", cachefile.createNewFile()));
+
+            // Heartbeats
+            from("timer://foo?period={{heartbeatsdelay}}")
+                    .process(new Processor() {
+                        public void process(Exchange exchange) throws Exception {
+                            genHeartbeatMessage(exchange, adaptername);
+                        }
+                    })
+                    .marshal(myJson)
+                    .to("activemq:{{heartbeatsqueue}}")
+                    .log("*** Heartbeat: ${id}");
+
+            from(new StringBuilder()
+                    .append("restna://events?")
+                    .append("delay={{delay}}&")
+                    .append("restapiurl={{restapiurl}}&")
+                    .append("wsusername={{wsusername}}&")
+                    .append("wspassword={{wspassword}}&")
+                    .append("eventsuri={{eventsuri}}&")
+                    .append("startindex={{startindex}}&")
+                    .append("adaptername={{adaptername}}&")
+                    .append("source={{source}}&")
+                    .append("count={{count}}&")
+                    .append("initcount={{initcount}}&")
+                    .append("specialEvent={{specialEvent}}")
+                    .toString())
+
+                    .choice()
+                    .when(header("Type").isEqualTo("Error"))
+                    .marshal(myJson)
+                    .to("activemq:{{errorsqueue}}")
+                    .log(LoggingLevel.INFO, logger, "Error: ${id} ${header.EventUniqueId}")
+                    .log(LoggingLevel.ERROR, logger, "*** NEW ERROR BODY: ${in.body}")
+
+                    .otherwise()
+
+                    .idempotentConsumer(
+                            header("EventId"),
+                            FileIdempotentRepository.fileIdempotentRepository(cachefile, CACHE_SIZE, MAX_FILE_SIZE)
+                    ).skipDuplicate(false)
+
+                    .marshal(myJson)
+
+                    .filter(exchangeProperty(Exchange.DUPLICATE_MESSAGE).isEqualTo(true))
+                    .log("*** REPEATED EVENT: ${id} ${header.EventUniqueId}")
+                    .log(LoggingLevel.DEBUG, logger, "*** REPEATED EVENT BODY: ${in.body}")
+                    .to("activemq:{{eventsqueue}}")
+                    .stop()
+                    .end()
+
+                    .log("*** NEW EVENT: ${id} ${header.EventUniqueId}")
+                    .log(LoggingLevel.DEBUG, logger, "*** NEW EVENT BODY: ${in.body}")
+                    .to("activemq:{{eventsqueue}}");
+        }
+    }
+
 }

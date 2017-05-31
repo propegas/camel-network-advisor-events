@@ -11,7 +11,6 @@ import org.apache.camel.Processor;
 import org.apache.camel.impl.ScheduledPollConsumer;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
@@ -22,40 +21,32 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.ssl.SSLContextBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.at_consulting.itsm.event.Event;
-import ru.at_consulting.itsm.event_rules.EnrichRule;
-import ru.at_consulting.itsm.event_rules.EventRules;
-import ru.at_consulting.itsm.event_rules.RuleInput;
-import ru.at_consulting.itsm.event_rules.RuleOutput;
-import ru.at_consulting.itsm.event_rules.Statement;
+import ru.atc.adapters.type.Event;
 import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorDevice;
 import ru.atc.camel.networkadvisor.events.api.RESTNetworkAdvisorEvents;
 
 import javax.net.ssl.SSLContext;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Unmarshaller;
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static ru.atc.adapters.message.CamelMessageManager.genAndSendErrorMessage;
+import static ru.atc.adapters.message.CamelMessageManager.genHeartbeatMessage;
+
 public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
     private static final int HTTP_OK_STATUS = 200;
-    private static final Logger logger = LoggerFactory.getLogger(Main.class);
+    private static final Logger logger = LoggerFactory.getLogger("mainLogger");
+    private static final Logger loggerErrors = LoggerFactory.getLogger("errorsLogger");
     private static String savedWStoken;
-    private static List<EnrichRule> enrichRules;
+    //private static List<EnrichRule> enrichRules;
     private final RESTNetworkAdvisorEndpoint endpoint;
 
     public RESTNetworkAdvisorConsumer(RESTNetworkAdvisorEndpoint endpoint, Processor processor) {
@@ -65,30 +56,6 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         this.setTimeUnit(TimeUnit.MINUTES);
         this.setInitialDelay(0);
         this.setDelay(endpoint.getConfiguration().getDelay());
-    }
-
-    public static void genHeartbeatMessage(Exchange exchange) {
-        // TODO Auto-generated method stub
-        long timestamp = System.currentTimeMillis();
-        timestamp = timestamp / 1000;
-        //String textError = "Возникла ошибка при работе адаптера: ";
-        Event genevent = new Event();
-        genevent.setMessage("Сигнал HEARTBEAT от адаптера");
-        genevent.setEventCategory("ADAPTER");
-        genevent.setObject("HEARTBEAT");
-        genevent.setSeverity(PersistentEventSeverity.OK.name());
-        genevent.setTimestamp(timestamp);
-        genevent.setEventsource("BSNA_EVENT_ADAPTER");
-
-        logger.info(" **** Create Exchange for Heartbeat Message container");
-        //Exchange exchange = getEndpoint().createExchange();
-        exchange.getIn().setBody(genevent, Event.class);
-
-        exchange.getIn().setHeader("Timestamp", timestamp);
-        exchange.getIn().setHeader("queueName", "Heartbeats");
-        exchange.getIn().setHeader("Type", "Heartbeats");
-        exchange.getIn().setHeader("Source", "BSNA_EVENT_ADAPTER");
-
     }
 
     public static String getSavedWStoken() {
@@ -115,80 +82,41 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
     public long beforePoll(long timeout) throws Exception {
 
         logger.info("*** Before Poll!!!");
-        // only one operation implemented for now !
-        //throw new IllegalArgumentException("Incorrect operation: ");
 
         //send HEARTBEAT
-        genHeartbeatMessage(getEndpoint().createExchange());
+        genHeartbeatMessage(getEndpoint().createExchange(), endpoint.getConfiguration().getAdaptername());
 
         return timeout;
     }
 
     private void genErrorMessage(String message) {
-        // TODO Auto-generated method stub
-        long timestamp = System.currentTimeMillis();
-        timestamp = timestamp / 1000;
-        String textError = "Возникла ошибка при работе адаптера: ";
-        Event genevent = new Event();
-        genevent.setMessage(textError + message);
-        genevent.setEventCategory("ADAPTER");
-        genevent.setSeverity(PersistentEventSeverity.CRITICAL.name());
-        genevent.setTimestamp(timestamp);
-        genevent.setEventsource("BSNA_EVENT_ADAPTER");
-        genevent.setStatus("OPEN");
-        genevent.setHost("adapter");
-
-        logger.info(" **** Create Exchange for Error Message container");
-        Exchange exchange = getEndpoint().createExchange();
-        exchange.getIn().setBody(genevent, Event.class);
-
-        exchange.getIn().setHeader("EventIdAndStatus", "Error_" + timestamp);
-        exchange.getIn().setHeader("Timestamp", timestamp);
-        exchange.getIn().setHeader("queueName", "Events");
-        exchange.getIn().setHeader("Type", "Error");
-
-        try {
-            getProcessor().process(exchange);
-        } catch (Exception e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-
+        genAndSendErrorMessage(this, message, new RuntimeException("No additional exception's text."),
+                endpoint.getConfiguration().getAdaptername());
     }
 
-    private CloseableHttpClient initHttp() {
+    private void genErrorMessage(String message, Exception exception) {
+        genAndSendErrorMessage(this, message, exception,
+                endpoint.getConfiguration().getAdaptername());
+    }
+
+    private CloseableHttpClient initHttp() throws KeyManagementException {
 
         SSLContext sslContext = null;
-        //HttpClient client = HttpClientBuilder.create().build();
         HttpClientBuilder cb = HttpClientBuilder.create();
         SSLContextBuilder sslcb = new SSLContextBuilder();
         try {
             sslcb.loadTrustMaterial(KeyStore.getInstance(KeyStore.getDefaultType()), new TrustSelfSignedStrategy());
-        } catch (NoSuchAlgorithmException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        } catch (KeyStoreException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+        } catch (NoSuchAlgorithmException | KeyStoreException e) {
+            loggerErrors.error("HTTP SSL KeyStore Error", e);
         }
-        try {
-            cb.setSslcontext(sslcb.build());
-        } catch (KeyManagementException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
+
         try {
             sslContext = sslcb.build();
-        } catch (KeyManagementException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
         } catch (NoSuchAlgorithmException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            loggerErrors.error("HTTP SSL KeyStore Error", e);
         }
+
+        cb.setSslcontext(sslContext);
 
         @SuppressWarnings("deprecation")
         SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(sslContext, SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
@@ -212,28 +140,19 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         HttpResponse response;
         try {
             response = httpclient.execute(request);
-        } catch (ClientProtocolException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            throw e;
-            //return null;
         } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            throw e;
-            //return null;
+            logger.error("Error while get WS Token ", e);
+            genErrorMessage("Error while get WS Token ", e);
+            throw new RuntimeException("Error while get WS Token ");
         }
 
         Header head = response.getFirstHeader("WStoken");
         String wsToken = head.getValue();
 
         logger.debug("***************** WStoken: " + wsToken);
-        //System.out.println("***************** WStoken: " + WStoken);
 
         if (response.getStatusLine().getStatusCode() != HTTP_OK_STATUS) {
-            //throw new RuntimeException("Feedly API error with return code: " + response.getStatusLine().getStatusCode());
-            System.out.println("Network Advisor RST API error with return code: " + response.getStatusLine().getStatusCode());
-            //return null;
+            genErrorMessage("Failed while HTTP API connect.");
             throw new RuntimeException("Failed while HTTP API connect.");
         }
 
@@ -244,35 +163,23 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
     }
 
-    private JsonObject performGetRequest(String uri, String wsToken) throws IOException {
+    private JsonObject performGetRequest(String uri, String wsToken) throws IOException, KeyManagementException {
 
         String restapiurl = endpoint.getConfiguration().getRestapiurl();
 
-        //System.out.println("*****************Lastid: " + endpoint.getConfiguration().getLastid());
-        //endpoint.getConfiguration().setLastid(70955);
-
         CloseableHttpClient httpClient = initHttp();
-
-        //httpclient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
-
-        //System.out.println("*****************WSToken: " + wsToken);
-
-        String wsTokenFinal = null;
+        String wsTokenFinal;
         if (wsToken == null) {
             wsTokenFinal = getWStoken(httpClient);
             if (wsTokenFinal == null) {
                 httpClient.close();
+                genErrorMessage("Failed while WSToken retrieving.");
                 throw new RuntimeException("Failed while WSToken retrieving.");
             }
 
         } else
             wsTokenFinal = wsToken;
 
-        //System.out.println("*****************WSToken: " + wsToken);
-
-        //System.out.println("*****************URL: " + restapiurl + uri);
-
-        //uri = "resourcegroups/All/events?startindex=0&count=10&specialEvent=true&origin=trap";
         HttpGet request2 = new HttpGet(restapiurl + uri);
         request2.addHeader("Accept", "application/vnd.brocade.networkadvisor+json;version=v1");
         request2.addHeader("WStoken", wsTokenFinal);
@@ -293,63 +200,40 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
     private RESTNetworkAdvisorDevice getDeviceByWwn(String wwn, String wsToken) throws IOException {
         String uri = String.format("resourcegroups/All/fcswitches/%s", wwn);
 
-        //System.out.println("***************** URL2: " + uri);
-
         logger.debug("*** WSToken : " + wsToken);
 
         JsonObject json;
         try {
             json = performGetRequest(uri, wsToken);
-        } catch (ClientProtocolException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            throw e;
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            throw e;
-
+        } catch (IOException | KeyManagementException e) {
+            genErrorMessage("Failed while WSToken retrieving.", e);
+            throw new RuntimeException("Failed while WSToken retrieving.", e);
         }
-
         JsonArray devices = (JsonArray) json.get("fcSwitches");
-        //JsonElement serverName = json.get("serverName");
-        //List<RESTNetworkAdvisorEvents> eventList = new ArrayList<RESTNetworkAdvisorEvents>();
-        //Device device = new Device();
+
         Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
         JsonElement f = devices.get(0);
 
         logger.debug(f.toString());
 
-        //gendevice = genDeviceObj( device_na );
-
         return gson.fromJson(f, RESTNetworkAdvisorDevice.class);
 
     }
 
-    private int processSearchEvents() throws Exception {
+    private int processSearchEvents() {
 
-        //Long timestamp;
-
-        EventRules eventRules = initEnrichRules("enrichment-rules.xml");
-        enrichRules = eventRules.getEnrichRules();
-        logger.info("Parsed " + enrichRules.size() + " Rules.");
-
-        //System.exit(-1);
+        //EventRules eventRules = initEnrichRules("enrichment-rules.xml");
+        //enrichRules = eventRules.getEnrichRules();
+        //logger.info("Parsed " + enrichRules.size() + " Rules.");
 
         String eventsuri = endpoint.getConfiguration().getEventsuri();
-
-        //System.out.println("***************** eventsuri: " + eventsuri);
 
         int startindex = endpoint.getConfiguration().getStartindex();
         int initcount = endpoint.getConfiguration().getInitcount();
         String specialEvent = endpoint.getConfiguration().getSpecialEvent();
         String uri = String.format("%sevents?startindex=%d&count=%d&specialEvent=%s",
                 eventsuri, startindex, initcount, specialEvent);
-
-        //System.out.println("***************** URL: " + uri);
-
-        //CloseableHttpClient httpclient = initHttp();
 
         logger.info("Try to get " + initcount + " Events.");
 
@@ -360,13 +244,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         boolean findlast;
         try {
             JsonObject json = performGetRequest(uri, null);
-
-            //System.out.println("*****************  JSON: " + json);
-
             JsonArray events = (JsonArray) json.get("events");
-            //JsonElement serverName = json.get("serverName");
-            //List<RESTNetworkAdvisorEvents> eventList = new ArrayList<RESTNetworkAdvisorEvents>();
-            // List<Event> eventList = new ArrayList<>();
             Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
             int eventId;
@@ -375,12 +253,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
             j = 0;
             findlast = false;
 
-            //System.out.println("*****************lastEventId: " + lastEventId);
             int storedLastId = endpoint.getConfiguration().getLastid();
-            //System.out.println("*****************storedLastId: " + storedLastId);
 
             logger.info("Received " + events.size() + " Total Events.");
-
             logger.debug("*** WSToken : " + getSavedWStoken());
 
             for (JsonElement f : events) {
@@ -400,10 +275,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                     if (eventId > storedLastId) {
                         j++;
                         genevent = genEventObj(event);
-
-                        genevent = processEnrichmentRules(genevent);
-
-                        //eventList.add(genevent);
+                        //genevent = processEnrichmentRules(genevent);
 
                         logger.info("Create Exchange container");
                         Exchange exchange = getEndpoint().createExchange();
@@ -420,48 +292,28 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
             }
         } catch (NullPointerException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            logger.error(String.format("Error while get Events from API: %s ", e));
-            genErrorMessage(e.getMessage() + " " + e.toString());
-            //dataSource.close();
+            genErrorMessage("Error while get Events from API", e);
             return 0;
-        } catch (Error e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            logger.error(String.format("Error while get Events from API: %s ", e));
-            genErrorMessage(e.getMessage() + " " + e.toString());
-            //dataSource.close();
-            return 0;
-        } catch (Throwable e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            logger.error(String.format("Error while get Events from API: %s ", e));
-            genErrorMessage(e.getMessage() + " " + e.toString());
-            //dataSource.close();
+        } catch (Exception e) {
+            genErrorMessage("General Error while get Events from API", e);
             return 0;
         }
 
         logger.info("Received " + j + " new Events.");
 
-        //Collections.reverse(eventList);
         endpoint.getConfiguration().setLastid(lastEventId);
         int count = endpoint.getConfiguration().getCount();
 
-        //endpoint.getConfiguration().setLastid(lastEventId) ;
         if (findlast) {
-
             endpoint.getConfiguration().setInitcount(count);
         } else {
-
             endpoint.getConfiguration().setInitcount(count * 2);
         }
 
         return 1;
     }
 
-    private Event processEnrichmentRules(Event event) {
-        //enrichRules = eventRules.getEnrichRules();
+    /*private Event processEnrichmentRules(Event event) throws IOException {
 
         logger.info("**** Process enrichment rules...");
 
@@ -471,7 +323,6 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
             RuleInput inputs = enrichRule.getRuleInput();
 
             List<Statement> inputStatements = inputs.getStatements();
-            //System.out.println("******* InputStatements: " + inputStatements);
             boolean statementsMatches = true;
             for (Statement statement : inputStatements) {
                 logger.debug("******* statement #: " + statement.getId());
@@ -491,9 +342,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                     String eventValue = null;
                     try {
                         eventValue = (String) method.invoke(event);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    } catch (InvocationTargetException e) {
+                    } catch (IllegalAccessException | InvocationTargetException e) {
                         e.printStackTrace();
                     }
 
@@ -515,7 +364,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
             RuleOutput outputs = enrichRule.getRuleOutput();
 
             List<Statement> outputStatements = outputs.getStatements();
-            //logger.debug("******* outputStatements: " + outputStatements);
+
             if (statementsMatches) {
                 for (Statement outputStatement : outputStatements) {
                     logger.debug("******* statement field name: " + outputStatement.getFieldName());
@@ -526,7 +375,7 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                     try {
                         reflectSetMethod = Event.class.getDeclaredMethod("set" + methodSuffix, String.class);
                     } catch (NoSuchMethodException e) {
-                        e.printStackTrace();
+                        loggerErrors.error(String.format("Error while invoke Enrichment Rules: ", e));
                         logger.error(String.format("Error while invoke Enrichment Rules: %s ", e));
                     }
                     if (reflectSetMethod != null) {
@@ -534,14 +383,9 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
                             reflectSetMethod.invoke(event, outputStatement.getFieldValue());
                             logger.info(String.format("******* New Value for %s: %s",
                                     outputStatement.getFieldName(), outputStatement.getFieldValue()));
-                            //logger.debug("******* NewEventValue: " + outputStatement.getFieldValue());
-                        } catch (IllegalAccessException e) {
-                            e.printStackTrace();
-                            logger.error(String.format("Error while invoke Enrichment Rules: %s ", e));
-
-                        } catch (InvocationTargetException e) {
-                            e.printStackTrace();
-                            logger.error(String.format("Error while invoke Enrichment Rules: %s ", e));
+                        } catch (IllegalAccessException | InvocationTargetException e) {
+                            loggerErrors.error(String.format("Error while invoke Enrichment Rules: ", e));
+                            logger.error(String.format("Error while invoke Enrichment Rules: ", e));
 
                         }
 
@@ -553,16 +397,13 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         logger.info("**** Stop process enrichment rules.");
 
         return event;
-    }
+    }*/
 
-    private EventRules initEnrichRules(String filePath) {
+    /*private EventRules initEnrichRules(String filePath) {
         EventRules eventRules = null;
 
         logger.info(String.format("Parsing Enrichment Rules xml: %s ", filePath));
         try {
-
-            //RESTNetworkAdvisorEvents rawEvent = new RESTNetworkAdvisorEvents();
-
             File file = new File(filePath);
             JAXBContext jaxbContext = JAXBContext.newInstance(EventRules.class);
 
@@ -570,11 +411,11 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
             eventRules = (EventRules) jaxbUnmarshaller.unmarshal(file);
 
         } catch (JAXBException e) {
-            e.printStackTrace();
-            logger.error(String.format("Error while invoke Enrichment Rules: %s ", e));
+            loggerErrors.error("Error while invoke Enrichment Rules", e);
+            logger.error("Error while invoke Enrichment Rules ", e);
         }
         return eventRules;
-    }
+    }*/
 
     private Event genEventObj(RESTNetworkAdvisorEvents event) throws IOException {
 
@@ -586,36 +427,30 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         genevent = new Event();
         String wwn;
         RESTNetworkAdvisorDevice networkAdvisorDevice;
-        //Long timestamp;
 
         wwn = event.getNodeWwn();
-        //logger.info("Create Exchange container");
-        //System.out.println("***************** wwn: " + wwn);
 
         String hostName;
         hostName = event.getSourceName();
         if (wwn.length() != 0) {
 
             logger.debug("******* Try to get device info by wwn... ");
-            //System.out.println("***************** wwn3: ***" + wwn.length() + "***");
             networkAdvisorDevice = getDeviceByWwn(wwn, getSavedWStoken());
             logger.info("***************** networkAdvisorDevice.getName(): " + networkAdvisorDevice.getName());
             logger.info("***************** event.getSourceName(): " + event.getSourceName());
-            //System.out.println("***************** networkAdvisorDevice.getName(): " + networkAdvisorDevice.getName());
-            //System.out.println("***************** event.getSourceName(): " + event.getSourceName());
             if (networkAdvisorDevice.getName().length() != 0)
                 hostName = networkAdvisorDevice.getName();
             else
                 hostName = event.getSourceName();
         }
         genevent.setHost(hostName);
-        //genevent.setParametr(event.getEventCategory());
+
         genevent.setObject(event.getNodeWwn());
         genevent.setCategory("HARDWARE");
         genevent.setExternalid(event.getKey());
         genevent.setMessage(event.getDescription());
         genevent.setSeverity(setRightSeverity(event.getSeverity()));
-        //PersistentEventSeverity.CRITICAL.toString();
+
         genevent.setStatus("OPEN");
         genevent.setOrigin(event.getOrigin());
         genevent.setModule(event.getModule());
@@ -624,9 +459,8 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         genevent.setEventsource("BSNA");
         genevent.setService("BSNA");
         genevent.setCi(String.format("%s:%s", endpoint.getConfiguration().getSource(), event.getNodeWwn()));
-        //System.out.println(event.toString());
 
-        logger.debug("******* Event generated. ");
+        logger.info("******* Event generated. ");
         logger.debug(genevent.toString());
 
         return genevent;
@@ -637,12 +471,10 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
         int id = -1;
         Pattern p = Pattern.compile("(edbid-)(.*)");
         Matcher matcher = p.matcher(key);
-        //String output = "";
+
         if (matcher.matches())
             id = Integer.parseInt(matcher.group(2));
-        //System.out.println(matcher.group(2));
-        //id = Integer.parseInt(matcher.group(2));
-        //System.out.println(id);
+
         return id;
     }
 
@@ -667,52 +499,39 @@ public class RESTNetworkAdvisorConsumer extends ScheduledPollConsumer {
 
         switch (severity) {
             case "EMERGENCY":
-                newseverity = PersistentEventSeverity.CRITICAL.name();
+                newseverity = Event.PersistentEventSeverity.CRITICAL.name();
                 break;
             case "ALERT":
-                newseverity = PersistentEventSeverity.CRITICAL.name();
+                newseverity = Event.PersistentEventSeverity.CRITICAL.name();
                 break;
             case "CRITICAL":
-                newseverity = PersistentEventSeverity.CRITICAL.name();
+                newseverity = Event.PersistentEventSeverity.CRITICAL.name();
                 break;
             case "ERROR":
-                newseverity = PersistentEventSeverity.MAJOR.name();
+                newseverity = Event.PersistentEventSeverity.MAJOR.name();
                 break;
             case "WARNING":
-                newseverity = PersistentEventSeverity.WARNING.name();
+                newseverity = Event.PersistentEventSeverity.WARNING.name();
                 break;
             case "NOTICE":
-                newseverity = PersistentEventSeverity.INFO.name();
+                newseverity = Event.PersistentEventSeverity.INFO.name();
                 break;
             case "INFO":
-                newseverity = PersistentEventSeverity.INFO.name();
+                newseverity = Event.PersistentEventSeverity.INFO.name();
                 break;
             case "DEBUG":
-                newseverity = PersistentEventSeverity.INFO.name();
+                newseverity = Event.PersistentEventSeverity.INFO.name();
                 break;
             case "UNKNOWN":
-                newseverity = PersistentEventSeverity.INFO.name();
+                newseverity = Event.PersistentEventSeverity.INFO.name();
                 break;
             default:
-                newseverity = PersistentEventSeverity.INFO.name();
+                newseverity = Event.PersistentEventSeverity.INFO.name();
                 break;
 
         }
-        System.out.println("***************** severity: " + severity);
-        System.out.println("***************** newseverity: " + newseverity);
+
         return newseverity;
-    }
-
-    public enum PersistentEventSeverity {
-        OK, INFO, WARNING, MINOR, MAJOR, CRITICAL;
-
-        public static PersistentEventSeverity fromValue(String v) {
-            return valueOf(v);
-        }
-
-        public String value() {
-            return name();
-        }
     }
 
 }
